@@ -41,7 +41,10 @@
 #include <memory>
 #include <cereal/cereal.hpp>
 #include <cereal/details/traits.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/archives/portable_binary.hpp>
 #include <madness/world/archive.h>
+#include <madness/world/parallel_archive.h>
 
 namespace madness {
 namespace archive {
@@ -53,6 +56,8 @@ class CerealOutputArchive : public ::madness::archive::BaseOutputArchive {
 
 public:
   CerealOutputArchive(Muesli &muesli) : muesli(&muesli, [](Muesli *) {}) {}
+  CerealOutputArchive() {}
+
   template <typename Arg, typename... RestOfArgs,
             typename = std::enable_if_t<
                 !std::is_same<Muesli, std::decay_t<Arg>>::value>>
@@ -81,6 +86,7 @@ public:
   }
 
   void open(std::size_t hint) {}
+  void open(char* buf){}
   void close(){};
   void flush(){};
 };
@@ -122,6 +128,120 @@ public:
   void rewind() const {}
   void close(){};
 };
+
+/// Wraps parallel archive around cereal binary output archives.
+class ParallelCerealOutputArchive : public BaseParallelArchive<CerealOutputArchive<cereal::BinaryOutputArchive>>, public BaseOutputArchive {
+ public:
+     /// Default constructor.
+     ParallelCerealOutputArchive() {}
+
+     /// Creates a parallel archive for output with given base filename and number of I/O nodes.
+
+     /// \param[in] world The world.
+     /// \param[in] filename Base name of the file.
+     /// \param[in] nio The number of I/O nodes.
+     ParallelCerealOutputArchive(World& world, const char* filename, int nio=1)  {
+         open(world, filename, nio);
+     }
+
+     /// Flush any data in the archive.
+     void flush() {
+         if (is_io_node()) local_archive().flush();
+     }
+ };
+ /// \tparam T The data type. MK
+ template <class T>
+ struct ArchivePrePostImpl<ParallelCerealOutputArchive,T> {
+     /// Store the preamble for this data type in the parallel archive.
+
+     /// \param[in] ar The archive.
+     static void preamble_store(const ParallelCerealOutputArchive& ar) {}
+
+     /// Store the postamble for this data type in the parallel archive.
+
+     /// \param[in] ar The archive.
+     static inline void postamble_store(const ParallelCerealOutputArchive& ar) {}
+ };
+
+ /// Specialization of \c ArchiveImpl for parallel output archives.
+
+ /// \attention No type-checking is performed.
+ /// \tparam T The data type.
+ template <class T>
+ struct ArchiveImpl<ParallelCerealOutputArchive, T> {
+     /// Store the data in the archive.
+
+     /// Parallel objects are forwarded to their implementation of parallel store.
+     ///
+     /// The function only appears (due to \c enable_if) if \c Q is a parallel
+     /// serializable object.
+     /// \todo Is \c Q necessary? I'm sure it is, but can't figure out why at a first glance.
+     /// \tparam Q Description needed.
+     /// \param[in] ar The parallel archive.
+     /// \param[in] t The parallel object to store.
+     /// \return The parallel archive.
+     template <typename Q>
+     static inline
+     typename std::enable_if<std::is_base_of<ParallelSerializableObject, Q>::value, const ParallelCerealOutputArchive&>::type
+     wrap_store(const ParallelCerealOutputArchive& ar, const Q& t) {
+         ArchiveStoreImpl<ParallelCerealOutputArchive,T>::store(ar,t);
+         return ar;
+     }
+
+     /// Store the data in the archive.
+
+     /// Serial objects write only from process 0.
+     ///
+     /// The function only appears (due to \c enable_if) if \c Q is not
+     /// a parallel serializable object.
+     /// \todo Same question about \c Q.
+     /// \tparam Q Description needed.
+     /// \param[in] ar The parallel archive.
+     /// \param[in] t The serial data.
+     /// \return The parallel archive.
+     template <typename Q>
+     static inline
+     typename std::enable_if<!std::is_base_of<ParallelSerializableObject, Q>::value, const ParallelCerealOutputArchive&>::type
+     wrap_store(const ParallelCerealOutputArchive& ar, const Q& t) {
+         if (ar.get_world()->rank()==0) {
+             ar.local_archive() & t;
+         }
+         return ar;
+     }
+ };
+// Write the archive array only from process zero.
+
+ /// \tparam T The array data type.
+ template <class T>
+ struct ArchiveImpl< ParallelCerealOutputArchive, archive_array<T> > {
+     /// Store the \c archive_array in the parallel archive.
+
+     /// \param[in] ar The parallel archive.
+     /// \param[in] t The array to store.
+     /// \return The parallel archive.
+     static inline const ParallelCerealOutputArchive& wrap_store(const ParallelCerealOutputArchive& ar, const archive_array<T>& t) {
+         if (ar.get_world()->rank() == 0) ar.local_archive() & t;
+         return ar;
+     }
+ };
+
+// Forward a fixed-size array to \c archive_array.
+
+ /// \tparam T The array data type.
+ /// \tparam n The number of items in the array.
+ template <class T, std::size_t n>
+ struct ArchiveImpl<ParallelCerealOutputArchive, T[n]> {
+     /// Store the array in the parallel archive.
+
+     /// \param[in] ar The parallel archive.
+     /// \param[in] t The array to store.
+     /// \return The parallel archive.
+     static inline const ParallelCerealOutputArchive& wrap_store(const ParallelCerealOutputArchive& ar, const T(&t)[n]) {
+         ar << wrap(&t[0],n);
+         return ar;
+     }
+ };
+
 } // namespace archive
 
 template <typename Muesli>

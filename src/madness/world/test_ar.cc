@@ -28,6 +28,10 @@
   tel:   865-241-3937
   fax:   865-572-0680
 */
+#if MADNESS_CATCH_SIGNALS
+# include <csignal>
+#endif
+
 
 #include <iostream>
 using std::cout;
@@ -56,9 +60,18 @@ using madness::archive::VectorOutputArchive;
 using madness::archive::BufferInputArchive;
 using madness::archive::BufferOutputArchive;
 
+#define WORLD_INSTANTIATE_STATIC_TEMPLATES
+#include <madness/world/MADworld.h>
+#include <madness/world/world_object.h>
+#include <madness/world/worlddc.h>
+#include <madness/world/parallel_archive.h>
+using madness::archive::ParallelInputArchive;
+using madness::archive::ParallelOutputArchive;
+
 #include <madness/world/cereal_archive.h>
 #ifdef MADNESS_HAS_CEREAL
 #include <cereal/archives/binary.hpp>
+using madness::archive::ParallelCerealOutputArchive;
 using CerealBinaryInputArchive = madness::archive::CerealInputArchive<cereal::BinaryInputArchive>;
 using CerealBinaryOutputArchive = madness::archive::CerealOutputArchive<cereal::BinaryOutputArchive>;
 static_assert(!madness::is_text_archive_v<CerealBinaryInputArchive>, "ouch");
@@ -600,7 +613,23 @@ void test_in(const InputArchive& iar) {
         std::cout << "Sorry, back to the drawing board.\n";
 }
 
-int main() {
+int main(int argc, char** argv) {
+#if  MADNESS_CATCH_SIGNALS
+    signal(SIGSEGV, mad_signal_handler);
+#endif
+    madness::initialize(argc,argv);
+
+    madness::World world(SafeMPI::COMM_WORLD);
+
+    //madness::redirectio(world);
+    madness::print("The processor frequency is",madness::cpu_frequency());
+    madness::print("There are",world.size(),"processes and I am process",world.rank(),"with",madness::ThreadPool::size(),"threads");
+
+    world.args(argc,argv);
+
+    world.gop.fence();
+
+
     madness::archive::archive_initialize_type_names();
     ARCHIVE_REGISTER_TYPE_AND_PTR_NAMES(A);
     ARCHIVE_REGISTER_TYPE_AND_PTR_NAMES(B);
@@ -610,6 +639,8 @@ int main() {
     ARCHIVE_REGISTER_TYPE_AND_PTR_NAMES(madness::archive::pair_short_complex_double);
     ARCHIVE_REGISTER_TYPE_AND_PTR_NAMES(madness::archive::map_short_complex_double);
 
+  	if(world.size()==1)
+	{
     {
         const char* f = "test.dat";
         cout << endl << "testing binary fstream archive" << endl;
@@ -727,7 +758,45 @@ int main() {
       }
 
     }
+    }//endif(world.size()==1)
 #endif  // MADNESS_HAS_CEREAL
+{
+    const char* f = "par_test.dat";
+     {
+         cout << endl << "testing parallel binary fstream archive" << endl;
+         ParallelOutputArchive oar(world,f);
+         test_out(oar);
+         oar.close();
+     }
+     {
+         ParallelInputArchive iar(world,f);
+         test_in(iar);
+         iar.close();
+     }
+  }
+  {
+     const char* f = "par_test.dat";
+      {
+          cout << endl << "testing cereal parallel binary fstream archive" << endl;
+          ParallelCerealOutputArchive oar(world, f);
+          test_out(oar);
+          oar.close();
+      }
+    //  {
+    //      madness::archive::ParallelCerealInputArchive iar(f);
+    //      test_in(iar);
+    //      iar.close();
+    //  }
+  }
+	
+
+    
+    madness::print("entering final fence");
+    world.gop.fence();
+    madness::print("done with final fence");
+
+    //print_stats(world);
+    madness::finalize();
 
   return 0;
 }

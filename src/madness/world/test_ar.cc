@@ -62,12 +62,12 @@ using madness::archive::BufferOutputArchive;
 using CerealBinaryInputArchive = madness::archive::CerealInputArchive<cereal::BinaryInputArchive>;
 using CerealBinaryOutputArchive = madness::archive::CerealOutputArchive<cereal::BinaryOutputArchive>;
 static_assert(!madness::is_text_archive_v<CerealBinaryInputArchive>, "ouch");
-static_assert(!madness::is_text_archive_v<CerealBinaryInputArchive>, "ouch");
+static_assert(!madness::is_text_archive_v<CerealBinaryOutputArchive>, "ouch");
 #include <cereal/archives/portable_binary.hpp>
 using CerealPortableBinaryInputArchive = madness::archive::CerealInputArchive<cereal::PortableBinaryInputArchive>;
 using CerealPortableBinaryOutputArchive = madness::archive::CerealOutputArchive<cereal::PortableBinaryOutputArchive>;
 static_assert(!madness::is_text_archive_v<CerealPortableBinaryInputArchive>, "ouch");
-static_assert(!madness::is_text_archive_v<CerealPortableBinaryInputArchive>, "ouch");
+static_assert(!madness::is_text_archive_v<CerealPortableBinaryOutputArchive>, "ouch");
 #include <cereal/archives/json.hpp>
 using CerealJSONInputArchive = madness::archive::CerealInputArchive<cereal::JSONInputArchive>;
 using CerealJSONOutputArchive = madness::archive::CerealOutputArchive<cereal::JSONOutputArchive>;

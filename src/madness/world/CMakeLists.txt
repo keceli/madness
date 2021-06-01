@@ -19,7 +19,9 @@ set(MADWORLD_SOURCES
     world_task_queue.cc worldgop.cc deferred_cleanup.cc worldmutex.cc
     binary_fstream_archive.cc text_fstream_archive.cc lookup3.c worldmpi.cc 
     group.cc parsec.cc archive.cc)
-
+if(ENABLE_CEREAL)
+  set(MADWORLD_HEADERS ${MADWORLD_HEADERS} "cereal_archive.h")
+endif()
 # Create the MADworld-obj and MADworld library targets
 add_mad_library(world MADWORLD_SOURCES MADWORLD_HEADERS "common;${ELEMENTAL_PACKAGE_NAME}" "madness/world")
 

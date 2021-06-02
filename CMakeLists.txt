@@ -66,7 +66,6 @@ set(MADNESS_INSTALL_CMAKEDIR "lib/cmake/madness"
 # Build options  ==============================================================
 
 redefaultable_option(MADNESS_BUILD_MADWORLD_ONLY "Build only MADWorld runtime (excluding BLAS/LAPACK interfaces)" OFF)
-redefaultable_option(ENABLE_CEREAL "Use Cereal library along with MADNESS archive for serialization" ON)
 
 # Enable optional libraries ====================================================
 
@@ -74,6 +73,7 @@ redefaultable_option(ENABLE_CEREAL "Use Cereal library along with MADNESS archiv
 # found, it is disabled without error. If the library is 'OFF' by default,
 # failure to find the library is an error. 
 
+option(ENABLE_CEREAL "Use Cereal library along with MADNESS archive for serialization" ON)
 option(ENABLE_MPI "Enable Message Passing Interface (MPI) Library" ON)
 redefaultable_option(ENABLE_MKL "Search for Intel Math Kernel Library (MKL) for BLAS and LAPACK support" ON)
 option(ENABLE_ACML "Search for AMD Core Math Library (ACML) for BLAS and LAPACK support" ON)

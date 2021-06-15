@@ -48,9 +48,9 @@ if (NOT TARGET cereal)
 
             # set cereal_CONFIG to the install location so that we know where to find it
             set(cereal_CONFIG ${CMAKE_INSTALL_PREFIX}/share/cmake/cereal/cereal-config.cmake)
-
+            message(STATUS "cereal target cmake ********************")
             export(EXPORT cereal
-                   FILE "${PROJECT_BINARY_DIR}/cereal-targets.cmake")
+                   FILE "${CMAKE_BINARY_DIR}/cereal-targets.cmake")
         endif (NOT TARGET cereal)
 
     endif (TARGET cereal)

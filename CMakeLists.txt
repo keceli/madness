@@ -65,7 +65,8 @@ set(MADNESS_INSTALL_CMAKEDIR "lib/cmake/madness"
 
 # Build options  ==============================================================
 
-redefaultable_option(MADNESS_BUILD_MADWORLD_ONLY "Build only MADWorld runtime (including BLAS/LAPACK interfaces, if found)" OFF)
+redefaultable_option(MADNESS_BUILD_MADWORLD_ONLY "Build only MADWorld runtime (excluding BLAS/LAPACK interfaces)" OFF)
+redefaultable_option(MADNESS_ENABLE_CEREAL "Support use of Cereal archives as backends for MADNESS serialization" OFF)
 
 # Enable optional libraries ====================================================
 
@@ -588,13 +589,13 @@ endif(CCACHE)
 include(external/pthread.cmake)
 include(external/mpi.cmake)
 include(external/papi.cmake)
-include(external/lapack.cmake)
 include(external/libunwind.cmake)
 include(external/gperftools.cmake)
 include(external/tbb.cmake)
 include(external/parsec.cmake)
 include(external/boost.cmake)
 if (NOT MADNESS_BUILD_MADWORLD_ONLY)
+  include(external/lapack.cmake)
   include(external/libxc.cmake)
   include(external/pcm.cmake)
 endif (NOT MADNESS_BUILD_MADWORLD_ONLY)
@@ -606,12 +607,18 @@ endif (DEFINED ELEMENTAL_TAG)
 # Add project subdirectories ===================================================
 
 # predefine targets
+add_custom_target(everything)
+add_dependencies(everything madness)
+
 if(NOT MADNESS_BUILD_MADWORLD_ONLY AND LAPACK_FOUND)
 	add_custom_target_subproject(madness numerical-examples)
+	add_custom_target_subproject(madness applications)
 endif()
+
 # Create build and install libraries libraries
 add_custom_target(madness-libraries)
 add_custom_target(install-madness-libraries)
+add_dependencies(everything madness-libraries)
 
 include_directories(${PROJECT_SOURCE_DIR}/src ${PROJECT_BINARY_DIR}/src)
 set(CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE TRUE)
@@ -622,6 +629,7 @@ if(ENABLE_UNITTESTS)
   set(MADNESS_HAS_GOOGLE_TEST 1)
   add_custom_target_subproject(madness unittests)
   add_custom_target_subproject(madness check COMMAND ${CMAKE_CTEST_COMMAND} USES_TERMINAL) # to be GNU compatible
+  add_dependencies(everything unittests)
 endif()
 add_subdirectory(src)
 add_subdirectory(doc)
@@ -709,4 +717,4 @@ add_custom_target(install-madness-config
 
 feature_summary(WHAT ALL
                 DESCRIPTION "=== MADNESS Package/Feature Info ===")
-    
+

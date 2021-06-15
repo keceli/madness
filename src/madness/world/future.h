@@ -38,6 +38,7 @@
 #ifndef MADNESS_WORLD_FUTURE_H__INCLUDED
 #define MADNESS_WORLD_FUTURE_H__INCLUDED
 
+#include <atomic>
 #include <vector>
 #include <stack>
 #include <new>
@@ -55,131 +56,6 @@ namespace madness {
 
     // forward decl
     template <typename T> class Future;
-
-
-    /// Boost-type-trait-like test if a type is a future.
-
-    /// \tparam T The type to test.
-    template <typename T>
-    struct is_future : public std::false_type { };
-
-
-    /// Boost-type-trait-like test if a type is a future.
-
-    /// \tparam T The type to test.
-    template <typename T>
-    struct is_future< Future<T> > : public std::true_type { };
-
-
-    /// Boost-type-trait-like mapping of type \c T to \c Future<T>.
-
-    /// \tparam T The type to have future added.
-    template <typename T>
-    struct add_future {
-        /// Type with \c Future added.
-        typedef Future<T> type;
-    };
-
-    /// Boost-type-trait-like mapping of \c Future<T> to \c Future<T>.
-
-    /// Specialization of \c add_future<T> that properly forbids the type
-    /// \c Future< Future<T> >.
-    /// \tparam T The underlying data type.
-    template <typename T>
-    struct add_future< Future<T> > {
-        /// Type with \c Future added.
-        typedef Future<T> type;
-    };
-
-    /// Boost-type-trait-like mapping of \c Future<T> to \c T.
-
-    /// \tparam T The type to have future removed; in this case, do nothing.
-    template <typename T>
-    struct remove_future {
-        /// Type with \c Future removed.
-        typedef T type;
-    };
-
-    /// This metafunction maps \c Future<T> to \c T.
-
-    /// \internal Future is a wrapper for T (it acts like an Identity monad), so this
-    /// unwraps T. It makes sense that the result should preserve the access traits
-    /// of the Future, i.e. const Future<T> should map to const T, etc.
-
-    /// Specialization of \c remove_future for \c Future<T>
-    /// \tparam T The type to have future removed.
-    template <typename T>
-    struct remove_future< Future<T> > {
-        /// Type with \c Future removed.
-        typedef T type;
-    };
-
-    /// Specialization of \c remove_future for \c Future<T>
-    /// \tparam T The type to have future removed.
-    template <typename T>
-    struct remove_future< const Future<T> > {
-        /// Type with \c Future removed.
-        typedef const T type;
-    };
-
-    /// Specialization of \c remove_future for \c Future<T>&
-    /// \tparam T The type to have future removed.
-    template <typename T>
-    struct remove_future< Future<T>& > {
-        /// Type with \c Future removed.
-        typedef T& type;
-    };
-
-    /// Specialization of \c remove_future for \c Future<T>&&
-    /// \tparam T The type to have future removed.
-    template <typename T>
-    struct remove_future< Future<T>&& > {
-        /// Type with \c Future removed.
-        typedef T&& type;
-    };
-
-    /// Specialization of \c remove_future for \c const \c Future<T>&
-    /// \tparam T The type to have future removed.
-    template <typename T>
-    struct remove_future< const Future<T>& > {
-        /// Type with \c Future removed.
-        typedef const T& type;
-    };
-
-    /// Macro to determine type of future (by removing wrapping \c Future template).
-
-    /// \param T The type (possibly with \c Future).
-#define REMFUTURE(T) typename remove_future< T >::type
-
-    /// C++11 version of REMFUTURE
-    template <typename T>
-    using remove_future_t = typename remove_future< T >::type;
-
-    /// Similar to remove_future , but future_to_ref<Future<T>> evaluates to T& ,whereas
-    /// remove_future<Future<T>> evaluates to T .
-    /// \tparam T The type to have future removed; in this case, do nothing.
-    template <typename T>
-    struct future_to_ref {
-        typedef T type;
-    };
-    template <typename T>
-    struct future_to_ref<Future<T>> {
-      typedef T& type;
-    };
-    template <typename T>
-    struct future_to_ref<Future<T>*> {
-      typedef T& type;
-    };
-    template <typename T>
-    struct future_to_ref<Future<T>&> {
-      typedef T& type;
-    };
-    template <typename T>
-    struct future_to_ref<const Future<T>&> {
-      typedef T& type;
-    };
-    template <typename T>
-    using future_to_ref_t = typename future_to_ref< T >::type;
 
     /// Human readable printing of a \c Future to a stream.
 
@@ -216,7 +92,7 @@ namespace madness {
         volatile mutable assignmentT assignments;
 
         /// A flag indicating if the future has been set.
-        volatile bool assigned;
+        std::atomic<bool> assigned;  // Use of atomic for necessary memory barriers/fences
 
         /// Reference to a remote future pimpl.
         RemoteReference< FutureImpl<T> > remote_ref;
@@ -322,7 +198,8 @@ namespace madness {
                 , assigned(false)
                 , remote_ref()
                 , t()
-        { }
+        {
+        }
 
 
         /// Constructor that uses a wrapper for a remote future.
@@ -335,7 +212,8 @@ namespace madness {
                 , assigned(false)
                 , remote_ref(remote_ref)
                 , t()
-        { }
+        {
+        }
 
 
         /// Checks if the value has been assigned.
@@ -506,7 +384,8 @@ namespace madness {
         /// Makes an unassigned future.
         Future() :
             f(new FutureImpl<T>()), value(nullptr)
-        { }
+        {
+        }
 
         /// Makes an assigned future.
 
@@ -514,7 +393,8 @@ namespace madness {
         /// \param[in] t Description needed.
         explicit Future(const T& t) :
             f(), value(new(static_cast<void*>(buffer)) T(t))
-        { }
+        {
+        }
 
 
         /// Makes a future wrapping a remote reference.
@@ -526,7 +406,8 @@ namespace madness {
                         std::make_shared<FutureImpl<T> >(remote_ref)),
                 //                        std::shared_ptr<FutureImpl<T> >(new FutureImpl<T>(remote_ref))),
                 value(nullptr)
-        { }
+        {
+        }
 
 
         /// Makes an assigned future from an input archive.
@@ -638,11 +519,10 @@ namespace madness {
         /// The value can only be set \em once.
         /// \param[in] value The value to be assigned.
         inline void set(const T& value) {
-            MADNESS_ASSERT(f);
+            MADNESS_CHECK(f);
             std::shared_ptr< FutureImpl<T> > ff = f; // manage life time of f
             ff->set(value);
         }
-
 
         /// Assigns the value.
 
@@ -650,7 +530,7 @@ namespace madness {
         /// \todo Description needed.
         /// \param[in] input_arch Description needed.
         inline void set(const archive::BufferInputArchive& input_arch) {
-            MADNESS_ASSERT(f);
+            MADNESS_CHECK(f);
             std::shared_ptr< FutureImpl<T> > ff = f; // manage life time of f
             ff->set(input_arch);
         }
@@ -658,23 +538,51 @@ namespace madness {
 
         /// Gets the value, waiting if necessary.
 
-        /// \attention Throws an error if this is not a local future.
+        /// \attention Throws an error if this is not a local future. 
         /// \return The value.
-        inline T& get() {
-            MADNESS_ASSERT(f || value); // Check that future is not default initialized
+        inline T& get() & {
+            MADNESS_CHECK(f || value); // Check that future is not default initialized
             return (f ? f->get() : *value);
         }
-
 
         /// Gets the value, waiting if necessary.
 
         /// \attention Throws an error if this is not a local future.
         /// \return The value.
-        inline const T& get() const {
-            MADNESS_ASSERT(f || value); // Check that future is not default initialized
+        inline const T& get() const & {
+            MADNESS_CHECK(f || value); // Check that future is not default initialized
             return (f ? f->get() : *value);
         }
 
+        /// Gets the value, waiting if necessary.
+
+        /// \attention Throws an error if this is not a local future.
+        /// \return The value.
+        inline T get() && {
+            // According to explanation here
+            // https://stackoverflow.com/questions/4986673/c11-rvalues-and-move-semantics-confusion-return-statement
+            // should not return && since that will still be a ref to
+            // local value.  Also, does not seem as if reference
+            // lifetime extension applies (see https://abseil.io/tips/107)
+            MADNESS_CHECK(f || value); // Check that future is not default initialized
+            if (f) {
+                // N.B. it is only safe to move the data out if f is the owner (i.e. it is the sole ref)
+                // it's not clear how to safely detect ownership beyond the obvious cases (see https://stackoverflow.com/questions/41142315/why-is-stdshared-ptrunique-deprecated)
+                // e.g. in the common case f is set by a task, hence its refcount is 2 until the task has completed *and* been destroyed
+                // so will tread lightly here ... don't move unless safe
+                auto &value_ref = f->get();
+                // if the task setting f is gone *and* this is the only ref, move out
+                // to prevent a race with another thread that will make a copy of this Future while we are moving the data
+                // atomically swap f with nullptr, then check use count of f's copy
+                auto fcopy = std::atomic_exchange(&f, {});  // N.B. deprecated in C++20! need to convert f to std::atomic<std::shared_ptr<FutureImpl>>
+                // f is now null and no new ref to the value can be created
+                if (fcopy.use_count() == 1)
+                    return std::move(value_ref);
+                else
+                    return value_ref;
+            } else
+                return std::move(*value);
+        }
 
         /// Check whether this future has been assigned.
 
@@ -683,42 +591,25 @@ namespace madness {
             return (f ? f->probe() : bool(value));
         }
 
-
-        /// Same as \c get().
+        /// Same as \c get()&.
 
         /// \return An lvalue reference to the value.
-        inline operator T&() & {
-            return get();
+        inline operator T&() & { // Must return & since taskfn uses it in argument holder
+            return static_cast<Future&>(*this).get();
         }
 
+        /// Same as `get() const&`.
 
-        /// Same as `get() const`.
-
-        /// \return An const lvalue reference to the value.
-        inline operator const T&() const& {
-            return get();
-        }
-
-        /// An rvalue analog of \c get().
-
-        /// \return An rvalue reference to the value.
-        /// \internal Rationale: the conversion operators unwrap the
-        ///           Future object (see also \c remove_future
-        ///           metafunction), hence the result should maintain
-        ///           the traits of the Future object. The rvalue conversion
-        ///           is made explicit to avoid accidents (perhaps this should
-        ///           be revisited to make easier moving Future objects into
-        ///           functions).
-        inline explicit operator T&&() && {
-            return std::move(get());
+        /// \return A const lvalue reference to the value.
+        inline operator const T&() const& { // Must return & since taskfn uses it in argument holder
+            return static_cast<const Future&>(*this).get();
         }
 
         /// An rvalue analog of \c get().
 
-        /// \return An rvalue reference to the value.
-        /// \internal Rationale: this makes possible to move the value from a mutable assigned future.
-        inline explicit operator T&&() & {
-            return std::move(get());
+        /// \return An rvalue reference to the value. 
+        inline operator T() && {
+            return static_cast<Future&&>(*this).get();
         }
 
         /// Returns a structure used to pass references to another process.
@@ -969,13 +860,16 @@ namespace madness {
         /// \tparam Archive Archive type.
         /// \tparam T Future type.
         template <class Archive, typename T>
-        struct ArchiveStoreImpl< Archive, Future<T> > {
+        struct ArchiveStoreImpl< Archive, Future<T>, std::enable_if_t<!std::is_void_v<T>> > {
 
             /// Store the assigned future in an archive.
 
             /// \param[in,out] ar The archive.
             /// \param[in] f The future.
-            static inline void store(const Archive& ar, const Future<T>& f) {
+            template <typename U = T, typename A = Archive>
+            static inline
+                std::enable_if_t<is_serializable_v<A, U>,void>
+                store(const Archive& ar, const Future<T>& f) {
                 MAD_ARCHIVE_DEBUG(std::cout << "serializing future" << std::endl);
                 MADNESS_ASSERT(f.probe());
                 ar & f.get();
@@ -988,13 +882,15 @@ namespace madness {
         /// \tparam Archive Archive type.
         /// \tparam T Future type.
         template <class Archive, typename T>
-        struct ArchiveLoadImpl< Archive, Future<T> > {
+        struct ArchiveLoadImpl< Archive, Future<T>, std::enable_if_t<!std::is_void_v<T>> > {
 
             /// Read into an unassigned future.
 
             /// \param[in,out] ar The archive.
             /// \param[out] f The future.
-            static inline void load(const Archive& ar, Future<T>& f) {
+            template <typename U = T, typename A = Archive>
+            static inline
+                std::enable_if_t<is_serializable_v<A, U>,void> load(const Archive& ar, Future<T>& f) {
                 MAD_ARCHIVE_DEBUG(std::cout << "deserializing future" << std::endl);
                 MADNESS_ASSERT(!f.probe());
                 T value;

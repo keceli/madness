@@ -16,11 +16,11 @@
 namespace madness {
 
 template<typename T, std::size_t NDIM> class Function;
-class World;
+//class World;
 class AtomicBasisSet;
 
 template<typename T, std::size_t NDIM>
-class MolecularOrbitals {
+class MolecularOrbitals : public archive::ParallelSerializableObject {
 public:
 
 	MolecularOrbitals() {}
@@ -73,8 +73,8 @@ public:
 		eps=copy(eps_new);
 	}
 
-	void recompute_irreps() {
-	}
+	void recompute_irreps(const std::string pointgroup,
+                       const Function<typename Tensor<T>::scalar_type,NDIM>& metric);
 
 	void recompute_localize_sets() {
 	}
@@ -107,9 +107,29 @@ public:
 		localize_sets.clear();
 	}
 
+	void pretty_print(std::string message) {
+	    print(message);
+	    print("orbital #   irrep   energy    occupation  localize_set");
+        for (int i=mo.size()-1; i>=0; --i) {
+//            double n=get_mos()[i].norm2();
+            printf("%5d %10s %12.8f  %6.2f  %8d\n", i, get_irreps()[i].c_str(),get_eps()[i],
+                   get_occ()[i],get_localize_sets()[i]);
+	    }
+	}
+
 	template <typename Archive>
 	void serialize (Archive& ar) {
-		ar & mo & eps & irreps & occ & localize_sets;
+		std::size_t nmo=mo.size();
+		ar & nmo;
+		if (nmo!=mo.size()) mo.resize(nmo);
+		for (auto& m : mo) ar & m;
+		ar & eps & irreps & occ & localize_sets;
+		if (ar.is_input_archive) {
+		    if (irreps.size()==0) irreps=std::vector<std::string>(nmo,"unknown");
+            if (localize_sets.size()==0) localize_sets=std::vector<int>(nmo,0);
+            if (occ.size()==0) occ=Tensor<double>(nmo);
+            if (eps.size()==0) eps=Tensor<double>(nmo);
+		}
 	}
 
 	friend bool similar(const MolecularOrbitals& mo1, const MolecularOrbitals& mo2, const double thresh=1.e-6) {
@@ -132,11 +152,11 @@ public:
 
 	/// @return amo and bmo
 	std::pair<MolecularOrbitals<T,NDIM>, MolecularOrbitals<T,NDIM> >
-	static read_restartdata(World& world, const Molecule& molecule, const std::size_t nmo_alpha,
-			const std::size_t nmo_beta) {
+	static read_restartdata(World& world, const std::string filename, const Molecule& molecule,
+			const std::size_t nmo_alpha, const std::size_t nmo_beta) {
 		bool spinrestricted = false;
 		double current_energy;
-		archive::ParallelInputArchive ar(world, "restartdata");
+		archive::ParallelInputArchive ar(world, filename.c_str());
 		ar & current_energy & spinrestricted;
 
 		MolecularOrbitals<T,NDIM> amo, bmo;
@@ -151,11 +171,11 @@ public:
 	/// reads amo and bmo from the restartdata file
 
 	/// @return amo and bmo
-	void static save_restartdata(World& world, const Molecule& molecule,
+	void static save_restartdata(World& world, const std::string filename, const Molecule& molecule,
 			const MolecularOrbitals<T,NDIM>& amo, const MolecularOrbitals<T,NDIM>& bmo) {
 		bool spinrestricted = false;
 		double current_energy=0.0;
-		archive::ParallelOutputArchive ar(world, "restartdata");
+		archive::ParallelOutputArchive ar(world, filename.c_str());
 		ar & current_energy & spinrestricted;
 
 		amo.save_mos(ar,molecule);
